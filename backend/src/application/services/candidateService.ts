@@ -1,8 +1,11 @@
+import { PrismaClient } from '@prisma/client';
 import { Candidate } from '../../domain/models/Candidate';
 import { validateCandidateData } from '../validator';
 import { Education } from '../../domain/models/Education';
 import { WorkExperience } from '../../domain/models/WorkExperience';
 import { Resume } from '../../domain/models/Resume';
+
+const prisma = new PrismaClient();
 
 export const addCandidate = async (candidateData: any) => {
     try {
@@ -62,4 +65,51 @@ export const findCandidateById = async (id: number): Promise<Candidate | null> =
         console.error('Error al buscar el candidato:', error);
         throw new Error('Error al recuperar el candidato');
     }
+};
+
+/**
+ * Actualiza la fase actual (`currentInterviewStep`) de la aplicación de un candidato.
+ * Decisión de diseño: `:id` de la ruta es el candidateId; el body aporta `applicationId`
+ * para desambiguar (un candidato puede tener varias aplicaciones, una por posición).
+ *
+ * @throws Error con `status = 404` si la aplicación no pertenece al candidato o el step no existe.
+ */
+export const updateCandidateStage = async (
+    candidateId: number,
+    applicationId: number,
+    newInterviewStepId: number
+) => {
+    const application = await prisma.application.findUnique({
+        where: { id: applicationId },
+        include: { position: { select: { interviewFlowId: true } } },
+    });
+    if (!application || application.candidateId !== candidateId) {
+        const error: any = new Error('Application not found for the given candidate');
+        error.status = 404;
+        throw error;
+    }
+
+    const interviewStep = await prisma.interviewStep.findUnique({
+        where: { id: newInterviewStepId },
+        select: { id: true, interviewFlowId: true },
+    });
+    if (!interviewStep) {
+        const error: any = new Error('Interview step not found');
+        error.status = 404;
+        throw error;
+    }
+
+    // The target step must belong to the same interview flow as the position,
+    // otherwise the candidate would be moved to a stage outside its process.
+    if (interviewStep.interviewFlowId !== application.position.interviewFlowId) {
+        const error: any = new Error("Interview step does not belong to the position's interview flow");
+        error.status = 400;
+        throw error;
+    }
+
+    return prisma.application.update({
+        where: { id: applicationId },
+        data: { currentInterviewStep: newInterviewStepId },
+        include: { interviewStep: { select: { id: true, name: true } } },
+    });
 };
