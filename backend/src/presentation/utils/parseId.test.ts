@@ -6,6 +6,7 @@ describe('parsePositiveInt', () => {
         ['  12  ', 12],
         ['007', 7],
         [42, 42],
+        [9007199254740991, 9007199254740991], // Number.MAX_SAFE_INTEGER (límite aceptado)
     ])('acepta %p como %p', (input, expected) => {
         expect(parsePositiveInt(input)).toBe(expected);
     });
@@ -21,6 +22,8 @@ describe('parsePositiveInt', () => {
         [-1],
         [1.5],
         [NaN],
+        [9007199254740992], // MAX_SAFE_INTEGER + 1 (entero inseguro)
+        ['9999999999999999999'], // string fuera del rango seguro
         [null],
         [undefined],
         [{}],

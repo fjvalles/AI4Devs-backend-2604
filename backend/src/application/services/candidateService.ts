@@ -107,9 +107,21 @@ export const updateCandidateStage = async (
         throw error;
     }
 
-    return prisma.application.update({
-        where: { id: applicationId },
+    // Atomic write: the ownership constraint is part of the WHERE, so a row that
+    // is reassigned/deleted between the checks above and the update cannot be
+    // mutated for the wrong candidate. `count !== 1` means it changed under us.
+    const updated = await prisma.application.updateMany({
+        where: { id: applicationId, candidateId },
         data: { currentInterviewStep: newInterviewStepId },
+    });
+    if (updated.count !== 1) {
+        const error: any = new Error('Application not found for the given candidate');
+        error.status = 404;
+        throw error;
+    }
+
+    return prisma.application.findUniqueOrThrow({
+        where: { id: applicationId },
         include: { interviewStep: { select: { id: true, name: true } } },
     });
 };
